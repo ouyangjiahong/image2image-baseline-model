@@ -12,6 +12,7 @@ import torch.nn.parallel
 from torch.utils.data import Dataset, DataLoader
 import numpy as np
 import pickle
+import shutil
 
 class MedicalDataset(Dataset):
     """ define the dataset with it's features """
@@ -27,4 +28,30 @@ class MedicalDataset(Dataset):
 
     def __getitem__(self, idx):
         sample = self.samples[idx]
+        input = sample['input']
+        target = sample['target']
         return sample   # {'input':img2, 'target':img2}
+
+def save_checkpoint(state, is_best, checkpoint_dir):
+    print("save checkpoint")
+    filename = checkpoint_dir+'/epoch'+str(state['epoch'])+'.pth.tar'
+    torch.save(state, filename)
+    if is_best:
+        shutil.copyfile(filename, checkpoint_dir+'/model_best.pth.tar')
+
+def load_checkpoint(net, checkpoint_dir):
+    filename = checkpoint_dir+'/model_best.pth.tar'
+    if os.path.isfile(filename):
+        checkpoint = torch.load(filename)
+        epoch = checkpoint['epoch']
+        # monitor_loss = checkpoint['monitor_loss']
+        net.load_state_dict(checkpoint['state_dict'])
+        print("loaded checkpoint '{}' (epoch {})".format(filename, checkpoint['epoch']))
+    else:
+        raise ValueError('No correct checkpoint')
+    return net
+
+def save_test_result(res, test_dir):
+    '''self define function to save results or visualization'''
+    print('edit here')
+    return
