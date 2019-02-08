@@ -56,11 +56,6 @@ def main():
     else:
         test(args)
 
-    # check data exist
-    # if not os.path.isfile(dataset_dir + '/' + data_train_name):
-    #     raise ValueError('no testing data file')
-
-
 def train(args):
     # define device
     device = torch.device('cuda:' + args.gpu)
@@ -71,12 +66,6 @@ def train(args):
     checkpoint_dir = args.checkpoint_dir + '/' + args.task_label
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
-
-    # if not os.path.exists(args.log_dir):
-    #     os.makedirs(args.log_dir)
-    # log_dir = args.log_dir + '/' + args.task_label
-    # if not os.path.exists(log_dir):
-    #     os.makedirs(log_dir)
 
     # check data exist
     dataset_dir = args.dataset_dir
