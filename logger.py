@@ -8,6 +8,15 @@ Github: https://github.com/senthilps8
 Description:
 """
 
+"""
+terminal:
+tensorboard --logdir dir_to_checkpoint --port 6006
+other port that can be used 8888. else?
+
+local browser:
+longo.stanford.edu:6006
+"""
+
 import tensorflow as tf
 from torch.autograd import Variable
 import numpy as np
@@ -53,11 +62,8 @@ class Logger(object):
                 s = StringIO()
             except:
                 s = BytesIO()
-            # print(img.shape)
-            # print("max")
-            # print(np.max(img))
-            # print("min")
-            # print(np.min(img))
+            if img.shape[0] == 1:
+                img = np.squeeze(img, 0)
             scipy.misc.toimage(img).save(s, format="png")
 
             # Create an Image object

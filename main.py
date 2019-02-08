@@ -72,11 +72,11 @@ def train(args):
     if not os.path.exists(checkpoint_dir):
         os.makedirs(checkpoint_dir)
 
-    if not os.path.exists(args.log_dir):
-        os.makedirs(args.log_dir)
-    log_dir = args.log_dir + '/' + args.task_label
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+    # if not os.path.exists(args.log_dir):
+    #     os.makedirs(args.log_dir)
+    # log_dir = args.log_dir + '/' + args.task_label
+    # if not os.path.exists(log_dir):
+    #     os.makedirs(log_dir)
 
     # check data exist
     dataset_dir = args.dataset_dir
@@ -90,7 +90,7 @@ def train(args):
         raise ValueError('no validation data file')
 
     # build Logger
-    logger = Logger(log_dir, args.task_label)
+    logger = Logger(args.log_dir, args.task_label)
 
     # load data
     trainData = MedicalDataset(train_data_path)
@@ -145,9 +145,10 @@ def train(args):
             if global_iter % args.print_freq == 0:
                 print('Epoch: [%2d] [%4d/%4d] time: %4.4f, L1_loss: %.8f' % \
                     (epoch, iter, iter_per_epoch, time.time()-start_time, loss_G.item()))
+                logger.scalar_summary('train/L1_loss', loss_G.item(), global_iter)
 
         # validation
-        monitor_loss = validate(net_G, valDataLoader, epoch, device)
+        monitor_loss = validate(net_G, valDataLoader, logger, epoch, global_iter, device)
         scheduler_G.step(monitor_loss)
 
         # save checkpoint
@@ -158,7 +159,7 @@ def train(args):
                     'net_G': net_G.state_dict()}
             save_checkpoint(state, is_best, checkpoint_dir)
 
-def validate(net, valDataLoader, epoch, device):
+def validate(net, valDataLoader, logger, epoch, global_iter, device):
     net.eval()
     loss_G_all = 0
     for iter, sample in enumerate(valDataLoader):
@@ -168,6 +169,12 @@ def validate(net, valDataLoader, epoch, device):
         loss_G_all += F.l1_loss(fake_B, real_B).item()  # need to accumulate using float not tensor, else the memory will be explode
     loss_G_mean = loss_G_all / (iter + 1)
     print('Validation: Epoch: [%2d], L1_loss: %.8f' % (epoch, loss_G_mean))
+
+    logger.scalar_summary('val/L1_loss', loss_G_mean, global_iter)
+    logger.image_summary('val/real_A', real_A.cpu().numpy()[:,real_A.shape[1]//2,:,:], global_iter)
+    logger.image_summary('val/real_B', real_B.cpu().numpy(), global_iter)
+    logger.image_summary('val/fake_B', fake_B.detach().cpu().numpy(), global_iter)  # need detach, can't transform from tensor with grad to numpy
+
     return loss_G_mean
 
 def test(args):
