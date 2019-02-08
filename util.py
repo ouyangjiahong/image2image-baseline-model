@@ -34,7 +34,7 @@ class MedicalDataset(Dataset):
 
 def save_checkpoint(state, is_best, checkpoint_dir):
     print("save checkpoint")
-    filename = checkpoint_dir+'/epoch'+str(state['epoch'])+'.pth.tar'
+    filename = checkpoint_dir+'/epoch'+str(state['epoch']).zfill(3)+'.pth.tar'
     torch.save(state, filename)
     if is_best:
         shutil.copyfile(filename, checkpoint_dir+'/model_best.pth.tar')

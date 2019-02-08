@@ -17,6 +17,7 @@ import pickle
 # from skimage.io import imsave
 # import matplotlib.pyplot as plt
 
+from loss import *
 from util import *
 from model import *  # UNet, GAN, VAE
 from logger import Logger   # API for tensorboard
@@ -96,6 +97,7 @@ def train(args):
 
     # define loss type
     criterionL1 = nn.L1Loss().to(device)
+    criteriontest = DSSIMLoss(value_range=20).to(device)
     criterionMSE = nn.MSELoss().to(device)
 
     # optimizer
@@ -126,15 +128,21 @@ def train(args):
 
             # define loss and do backward
             optimizer_G.zero_grad()
-            loss_G = criterionL1(fake_B, real_B)
+            loss_L1 = criterionL1(fake_B, real_B)
+            loss_test = criteriontest(fake_B, real_B)
+            loss_G = loss_L1 + 10*loss_test
+            # loss_G = criterionL1(fake_B, real_B)
             loss_G.backward()
             optimizer_G.step()
 
             # print msg
             if global_iter % args.print_freq == 0:
-                print('Epoch: [%2d] [%4d/%4d] time: %4.4f, L1_loss: %.8f' % \
-                    (epoch, iter, iter_per_epoch, time.time()-start_time, loss_G.item()))
+                print('Epoch: [%2d] [%4d/%4d] time: %4.4f, L1_loss: %.8f, PSNR_loss: %.8f' % \
+                    (epoch, iter, iter_per_epoch, time.time()-start_time, loss_L1.item(), loss_test.item()))
                 logger.scalar_summary('train/L1_loss', loss_G.item(), global_iter)
+                # print('Epoch: [%2d] [%4d/%4d] time: %4.4f, L1_loss: %.8f' % \
+                #     (epoch, iter, iter_per_epoch, time.time()-start_time, loss_G.item()))
+                # logger.scalar_summary('train/L1_loss', loss_G.item(), global_iter)
 
         # validation
         monitor_loss = validate(net_G, valDataLoader, logger, epoch, global_iter, device)
