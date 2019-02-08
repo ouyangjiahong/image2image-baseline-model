@@ -39,17 +39,23 @@ def save_checkpoint(state, is_best, checkpoint_dir):
     if is_best:
         shutil.copyfile(filename, checkpoint_dir+'/model_best.pth.tar')
 
-def load_checkpoint(net, checkpoint_dir):
+def load_checkpoint_by_key(values, checkpoint_dir, keys):
+    '''
+    the key can be state_dict for both optimizer or model,
+    value is the optimizer or model that define outside
+    '''
     filename = checkpoint_dir+'/model_best.pth.tar'
     if os.path.isfile(filename):
         checkpoint = torch.load(filename)
         epoch = checkpoint['epoch']
-        # monitor_loss = checkpoint['monitor_loss']
-        net.load_state_dict(checkpoint['state_dict'])
-        print("loaded checkpoint '{}' (epoch {})".format(filename, checkpoint['epoch']))
+        for i, key in enumerate(keys):
+            values[i].load_state_dict(checkpoint[key])
+        print("loaded checkpoint from '{}' (epoch: {}, monitor loss: {})".format(filename, \
+                epoch, checkpoint['monitor_loss']))
     else:
         raise ValueError('No correct checkpoint')
-    return net
+    return values, epoch
+
 
 def save_test_result(res, test_dir):
     '''self define function to save results or visualization'''

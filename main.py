@@ -113,12 +113,18 @@ def train(args):
     optimizer_G = optim.Adam(net_G.parameters(), lr=args.lr)
     scheduler_G = optim.lr_scheduler.ReduceLROnPlateau(optimizer_G, 'min')   # dynamic change lr according to val_loss
 
+    # continue training
+    start_epoch = 0
+    if args.continue_train:
+        [optimizer_G, scheduler_G, net_G], start_epoch = load_checkpoint_by_key([optimizer_G, scheduler_G, net_G],\
+                                                            checkpoint_dir, ['optimizer_G','scheduler_G','net_G'])
+
     # start training
     global_iter = 0
     monitor_loss_best = 100
     iter_per_epoch = len(trainDataLoader)
     start_time = time.time()
-    for epoch in range(args.epochs):
+    for epoch in range(start_epoch, args.epochs):
         net_G.train()
         for iter, sample in enumerate(trainDataLoader):
             global_iter += 1
@@ -148,7 +154,8 @@ def train(args):
         if monitor_loss_best > monitor_loss or epoch % args.save_freq == 1 or epoch == args.epochs-1:
             is_best = (monitor_loss_best > monitor_loss)
             state = {'epoch': epoch, 'task_label': args.task_label, 'monitor_loss': monitor_loss, \
-                    'optimizer': optimizer_G.state_dict(), 'state_dict': net_G.state_dict()}
+                    'optimizer_G': optimizer_G.state_dict(), 'scheduler_G': scheduler_G.state_dict(), \
+                    'net_G': net_G.state_dict()}
             save_checkpoint(state, is_best, checkpoint_dir)
 
 def validate(net, valDataLoader, epoch, device):
@@ -199,7 +206,7 @@ def test(args):
                 output_activation='softplus').to(device)
 
     # load checkpoint
-    net_G = load_checkpoint(net_G, checkpoint_dir)
+    [net_G], _ = load_checkpoint_by_key([net_G], checkpoint_dir, ['net_G'])
 
     # start testing
     net_G.eval()
