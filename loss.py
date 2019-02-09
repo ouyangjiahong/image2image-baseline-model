@@ -162,3 +162,18 @@ class PerceptualLoss(nn.Module):
             #         content_losses.append(self.content_loss(feature_prediction, feature_target))
 
         return content_losses, style_losses
+
+class GANLoss(nn.Module):
+    def __init__(self, device, ls_gan=True):
+        super(GANLoss, self).__init__()
+        self.device = device
+        if ls_gan == True:
+            self.loss = nn.MSELoss()
+        else:
+            self.loss = nn.BCELoss()
+
+    def forward(self, prediction, target_label_value=1.):
+        target_label = torch.tensor(target_label_value).to(self.device)
+        target = target_label.expand_as(prediction)
+        loss = self.loss(prediction, target)
+        return loss
