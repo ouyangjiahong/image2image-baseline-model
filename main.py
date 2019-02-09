@@ -97,7 +97,7 @@ def train(args):
 
     # define loss type
     criterionL1 = nn.L1Loss().to(device)
-    criteriontest = DSSIMLoss(value_range=20).to(device)
+    criteriontest = PSNRLoss(device).to(device)
     criterionMSE = nn.MSELoss().to(device)
 
     # optimizer
@@ -130,7 +130,8 @@ def train(args):
             optimizer_G.zero_grad()
             loss_L1 = criterionL1(fake_B, real_B)
             loss_test = criteriontest(fake_B, real_B)
-            loss_G = loss_L1 + 10*loss_test
+            # pdb.set_trace()
+            loss_G = loss_L1 + loss_test
             # loss_G = criterionL1(fake_B, real_B)
             loss_G.backward()
             optimizer_G.step()

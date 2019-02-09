@@ -1,16 +1,12 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import torchvision
+from torchvision import models
 
 import numpy as np
+# import copy
 import pdb
-
-# class testLoss(nn.Module):
-#     def __init__(self):
-#         super(testLoss, self).__init__()
-#
-#     def forward(self, prediction, target):
-#         return F.l1_loss(prediction, target, reduction='mean')
 
 class PSNRLoss(nn.Module):
     '''
@@ -52,6 +48,7 @@ class DSSIMLoss(nn.Module):
         return patches_prediction, patches_target
 
     def forward(self, prediction, target):
+        # parameters
         k1 = 0.01
         k2 = 0.03
 
@@ -69,5 +66,99 @@ class DSSIMLoss(nn.Module):
 
         SSIM = (2 * ux * uy + c1) * (2 * cov + c2)
         dominator = (ux * ux + uy * uy + c1) * (vx * vx + vy * vy + c2)
-        SSIM /= dominator
+        SSIM = SSIM / dominator
         return torch.mean((1. - SSIM) / 2.)
+
+class PerceptualLoss(nn.Module):
+    '''
+    content loss and style loss extracted by selected model
+    '''
+    def __init__(self, device, model_type='vgg19', content_layers=['conv_4'],
+                style_layers=['conv_1', 'conv_2', 'conv_3', 'conv_4', 'conv_5'], channel_idx=0):
+        super(PerceptualLoss, self).__init__()
+        self.device = device
+        self.model_type = model_type
+        self.content_layers = content_layers
+        self.style_layers = style_layers
+        self.channel_idx = channel_idx   # if output and target have multiple channels
+        if model_type == 'vgg19':
+            self.model = models.vgg19(pretrained=True).features.to(device)
+        self.model.eval()
+
+    def normalize_image(self, image):
+        # normalize to 0~1
+        image = image / image.max()
+        # image /= image.max()      # in-place operation, can't compute gradient
+
+        # grayscale to rgb
+        image = image[:, self.channel_idx, :, :]
+        image = image.unsqueeze(1).expand(-1, 3, -1, -1)
+
+        # normalize by mean/std
+        mean = torch.tensor([0.485, 0.456, 0.406]).view(-1, 1, 1).to(self.device)
+        std = torch.tensor([0.229, 0.224, 0.225]).view(-1, 1, 1).to(self.device)
+        image = (image - mean) / std
+
+        # crop the middle region
+        crop_size = (image.shape[-1] - 224) // 2
+        image = image[:, :, crop_size:crop_size+224, crop_size:crop_size+224]
+
+        return image
+
+    def content_loss(self, feature_prediction, feature_target):
+        content_loss = F.mse_loss(feature_prediction, feature_target)
+        return content_loss
+
+    def style_loss(self, feature_prediction, feature_target):
+        gram_prediction = self.gram_matrix(feature_prediction)
+        gram_target = self.gram_matrix(feature_target)
+        style_loss = F.mse_loss(gram_prediction, gram_target)
+        return style_loss
+
+    def gram_matrix(self, feature):
+        batch_size, num_ch, height, width = feature.size()  # NCHW
+        feature = feature.view(batch_size * num_ch, height * width)
+        gram = torch.mm(feature, feature.t())
+        return gram.div(batch_size * num_ch * height * width)
+
+    def forward(self, prediction, target):
+        # noramlize image
+        prediction = self.normalize_image(prediction)
+        target = self.normalize_image(target)
+
+        # get features from selected layers
+        conv_block_idx = 0
+        model_new = nn.Sequential().to(self.device)
+        content_losses = []
+        style_losses = []
+        # feature_prediction = prediction
+        # feature_target = target
+        for i, layer in enumerate(self.model):
+            # TODO: might have error when it's self defined model
+            # the official code given by tutorial, a bit faster than the code below
+            if isinstance(layer, nn.Conv2d):
+                conv_block_idx += 1
+                name = 'conv_' + str(conv_block_idx)
+            else:
+                name = str(i)
+            model_new.add_module(name, layer)
+
+            # get loss
+            if name in self.content_layers or name in self.style_layers:
+                feature_prediction = model_new(prediction)
+                feature_target = model_new(target)
+                if name in self.content_layers:
+                    content_losses.append(self.content_loss(feature_prediction, feature_target))
+                if name in self.style_layers:
+                    style_losses.append(self.style_loss(feature_prediction, feature_target))
+
+            # another version without building the new model
+            # feature_prediction = layer(feature_prediction)
+            # feature_target = layer(feature_target)
+            # if isinstance(layer, nn.Conv2d):
+            #     conv_block_idx += 1
+            #     name = 'conv_' + str(conv_block_idx)
+            #     if name in self.content_layers:
+            #         content_losses.append(self.content_loss(feature_prediction, feature_target))
+
+        return content_losses, style_losses
