@@ -31,7 +31,7 @@ parser.add_argument('--gpu', dest='gpu', default='0', help='0,1,2,3')
 parser.add_argument('--phase', dest='phase', default='train', help='train, test')
 parser.add_argument('--task_label', dest='task_label', default=time_label, help='task specific name')
 parser.add_argument('--model_name', dest='model_name', default='Base', help='Base or GAN')
-parser.add_argument('--generator_name', dest='generator_name', default='UNet', help='UNet or ResNet or DenseNet...')
+parser.add_argument('--generator_name', dest='generator_name', default='UNet', help='UNet or ResNet or DenseNet... Standard for GANStandardGenerator')
 parser.add_argument('--dataset_dir', dest='dataset_dir', default='../data/AD', help='name of the dataset')
 parser.add_argument('--data_train_name', dest='data_train_name', default='train.pickle')
 parser.add_argument('--data_test_name', dest='data_test_name', default='test.pickle')
@@ -99,6 +99,9 @@ def train(args):
     if args.generator_name == 'UNet':
         net_G = UNet(in_num_ch=args.in_num_ch, out_num_ch=args.out_num_ch, first_num_ch=64, input_size=256,
                     output_activation='softplus').to(device)
+    elif args.generator_name == 'Standard':
+        net_G = GANStandardGenerator(in_num_ch=args.in_num_ch, out_num_ch=args.out_num_ch, first_num_ch=64, input_size=256,
+                    output_activation='softplus').to(device)
     else:
         raise ValueError('not supporting other models yet!')
 
@@ -158,6 +161,9 @@ def test(args):
     # define network G
     if args.generator_name == 'UNet':
         net_G = UNet(in_num_ch=9, out_num_ch=1, first_num_ch=64, input_size=256,
+                    output_activation='softplus').to(device)
+    elif args.generator_name == 'Standard':
+        net_G = GANStandardGenerator(in_num_ch=9, out_num_ch=1, first_num_ch=64, input_size=256,
                     output_activation='softplus').to(device)
     else:
         raise ValueError('not supporting other models yet!')

@@ -39,7 +39,7 @@ class DownBlock(nn.Module):
         return x
 
 class UpBlock(nn.Module):
-    def __init__(self, in_num_ch, out_num_ch, upsample=False):
+    def __init__(self, in_num_ch, out_num_ch, upsample=True):
         super(UpBlock, self).__init__()
         if upsample == True:
             self.up = nn.Sequential(
@@ -97,9 +97,63 @@ class UNet(nn.Module):
         output_act = self.output_act(output)
         return output_act
 
+'''
+GAN's architecture
+'''
+class GANStandardGenerator(nn.Module):
+    def __init__(self, in_num_ch, out_num_ch, first_num_ch=64, input_size=256, output_activation='softplus'):
+        super(GANStandardGenerator, self).__init__()
+        self.down_1 = nn.Sequential(
+            nn.Conv2d(in_num_ch, first_num_ch, 4, 2, padding=1),
+            nn.LeakyReLU(0.2, inplace=True)
+        )
+        self.down_2 = ConvBlock(first_num_ch, 2*first_num_ch)
+        self.down_3 = ConvBlock(2*first_num_ch, 4*first_num_ch)
+        self.down_4 = ConvBlock(4*first_num_ch, 8*first_num_ch)
+        self.down_5 = ConvBlock(8*first_num_ch, 8*first_num_ch)
+        self.down_6 = ConvBlock(8*first_num_ch, 8*first_num_ch)
+        self.down_7 = ConvBlock(8*first_num_ch, 8*first_num_ch)
+        self.down_8 = ConvBlock(8*first_num_ch, 8*first_num_ch, activation='no') # 1 x 1
+        self.up_7 = DeconvBlock(8*first_num_ch, 8*first_num_ch)     # 512
+        self.up_6 = DeconvBlock(16*first_num_ch, 8*first_num_ch)    #
+        self.up_5 = DeconvBlock(16*first_num_ch, 8*first_num_ch)
+        self.up_4 = DeconvBlock(16*first_num_ch, 8*first_num_ch)
+        self.up_3 = DeconvBlock(16*first_num_ch, 4*first_num_ch)
+        self.up_2 = DeconvBlock(8*first_num_ch, 2*first_num_ch)
+        self.up_1 = DeconvBlock(4*first_num_ch, first_num_ch)
+        self.output = DeconvBlock(2*first_num_ch, out_num_ch, is_last=True)
+        # choose different activation layer
+        if output_activation == 'sigmoid':
+            self.output_act = nn.Sigmoid()
+        elif output_activation == 'tanh':
+            self.output_act = nn.Tanh()
+        elif output_activation == 'no':
+            self.output_act = nn.Sequential()
+        else:
+            self.output_act = nn.Softplus()
+
+    def forward(self, x):
+        down_1 = self.down_1(x)
+        down_2 = self.down_2(down_1)
+        down_3 = self.down_3(down_2)
+        down_4 = self.down_4(down_3)
+        down_5 = self.down_5(down_4)
+        down_6 = self.down_6(down_5)
+        down_7 = self.down_7(down_6)
+        down_8 = self.down_8(down_7)
+        up_7 = self.up_7(down_7, down_8)
+        up_6 = self.up_6(down_6, up_7)
+        up_5 = self.up_5(down_5, up_6)
+        up_4 = self.up_4(down_4, up_5)
+        up_3 = self.up_3(down_3, up_4)
+        up_2 = self.up_2(down_2, up_3)
+        up_1 = self.up_1(down_1, up_2)
+        output = self.output(None, up_1)
+        output_act = self.output_act(output)
+        return output_act
 
 class ConvBlock(nn.Module):
-    def __init__(self, in_num_ch, out_num_ch, filter_size=4, stride=2, padding=2, activation='lrelu'):
+    def __init__(self, in_num_ch, out_num_ch, filter_size=4, stride=2, padding=1, activation='lrelu'):
         super(ConvBlock, self).__init__()
         self.conv = nn.Sequential(
             nn.Conv2d(in_num_ch, out_num_ch, filter_size, stride, padding=padding),
@@ -107,14 +161,48 @@ class ConvBlock(nn.Module):
             )
         if activation == 'lrelu':
             self.act = nn.LeakyReLU(0.2, inplace=True)
-        if activation == 'none':
-            self.act = nn.Sequential()
-        else:
+        if activation == 'relu':
             self.act = nn.ReLU(inplace=True)
+        if activation == 'elu':
+            self.act = nn.ELU(inplace=True)
+        else:
+            self.act = nn.Sequential()
 
     def forward(self, x):
         x = self.conv(x)
         x = self.act(x)
+        return x
+
+class DeconvBlock(nn.Module):
+    def __init__(self, in_num_ch, out_num_ch, filter_size=3, stride=1, padding=1, activation='relu', upsample=True, is_last=False):
+        super(DeconvBlock, self).__init__()
+        if activation == 'lrelu':
+            self.act = nn.LeakyReLU(0.2, inplace=True)
+        if activation == 'relu':
+            self.act = nn.ReLU(inplace=True)
+        if activation == 'elu':
+            self.act = nn.ELU(inplace=True)
+        else:
+            self.act = nn.Sequential()
+        self.is_last = is_last
+
+        if upsample == True:
+            self.up = nn.Sequential(
+                nn.Upsample(scale_factor=2, mode='bilinear', align_corners=True),
+                nn.Conv2d(in_num_ch, out_num_ch, filter_size, stride, padding=padding)
+                )
+        else:
+            self.up = nn.ConvTranspose2d(in_num_ch, out_num_ch, filter_size, padding=padding, stride=stride) # (H-1)*stride-2*padding+kernel_size
+        self.bn = nn.BatchNorm2d(out_num_ch)
+
+    def forward(self, x_down, x_up):
+        x_up = self.act(x_up)
+        x_up = self.up(x_up)
+        if self.is_last == False:
+            x_up = self.bn(x_up)
+            x = torch.cat([x_down, x_up], 1)
+        else:
+            x = x_up
         return x
 
 class Discriminator(nn.Module):
