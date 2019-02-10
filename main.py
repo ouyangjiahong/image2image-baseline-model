@@ -19,7 +19,7 @@ import pickle
 
 from loss import *
 from util import *
-from model import *  # UNet, GAN, VAE
+from model import *  # UNet, GAN
 from logger import Logger   # API for tensorboard
 
 localtime = time.localtime(time.time())
@@ -30,7 +30,7 @@ parser = argparse.ArgumentParser(description='')
 parser.add_argument('--gpu', dest='gpu', default='0', help='0,1,2,3')
 parser.add_argument('--phase', dest='phase', default='train', help='train, test')
 parser.add_argument('--task_label', dest='task_label', default=time_label, help='task specific name')
-parser.add_argument('--model_name', dest='model_name', default='Base', help='Base or GAN or VAE')
+parser.add_argument('--model_name', dest='model_name', default='Base', help='Base or GAN')
 parser.add_argument('--generator_name', dest='generator_name', default='UNet', help='UNet or ResNet or DenseNet...')
 parser.add_argument('--dataset_dir', dest='dataset_dir', default='../data/AD', help='name of the dataset')
 parser.add_argument('--data_train_name', dest='data_train_name', default='train.pickle')
@@ -96,10 +96,7 @@ def train(args):
     print('built data loader')
 
     # define generator model
-    if args.model_name == 'VAE':
-        net_G = VAE(in_num_ch=args.in_num_ch, out_num_ch=args.out_num_ch, first_num_ch=64, input_size=256,
-                    output_activation='softplus').to(device)
-    elif args.generator_name == 'UNet':
+    if args.generator_name == 'UNet':
         net_G = UNet(in_num_ch=args.in_num_ch, out_num_ch=args.out_num_ch, first_num_ch=64, input_size=256,
                     output_activation='softplus').to(device)
     else:
@@ -107,10 +104,8 @@ def train(args):
 
     if args.model_name == 'Base':
         train_Base(args, net_G, device, trainDataLoader, valDataLoader, logger, args.in_num_ch, args.out_num_ch, checkpoint_dir)
-    elif args.model_name == 'GAN': # GAN
+    else: # GAN
         train_GAN(args, net_G, device, trainDataLoader, valDataLoader, logger, args.in_num_ch, args.out_num_ch, checkpoint_dir)
-    else:
-        train_VAE(args, net_G, device, trainDataLoader, valDataLoader, logger, args.in_num_ch, args.out_num_ch, checkpoint_dir)
 
 def validate(net, valDataLoader, logger, epoch, global_iter, device):
     net.eval()
@@ -161,10 +156,7 @@ def test(args):
     print('built data loader')
 
     # define network G
-    if  args.model_name == 'VAE':
-        net_G = VAE(in_num_ch=9, out_num_ch=1, first_num_ch=64, input_size=256,
-                    output_activation='softplus').to(device)
-    elif args.generator_name == 'UNet':
+    if args.generator_name == 'UNet':
         net_G = UNet(in_num_ch=9, out_num_ch=1, first_num_ch=64, input_size=256,
                     output_activation='softplus').to(device)
     else:
@@ -336,63 +328,6 @@ def train_GAN(args, net_G, device, trainDataLoader, valDataLoader, logger, in_nu
                     'scheduler_D': scheduler_D.state_dict(), 'net_D': net_D.state_dict()}
             save_checkpoint(state, is_best, checkpoint_dir)
 
-def train_VAE(args, net_G, device, trainDataLoader, valDataLoader, logger, in_num_ch, out_num_ch, checkpoint_dir):
-    # define loss type
-    criterionL1 = nn.L1Loss().to(device)
-    # criteriontest = DSSIMLoss(device).to(device)
-    criterionMSE = nn.MSELoss().to(device)
 
-    # optimizer
-    optimizer_G = optim.Adam(net_G.parameters(), lr=args.lr)
-    scheduler_G = optim.lr_scheduler.ReduceLROnPlateau(optimizer_G, 'min')   # dynamic change lr according to val_loss
-
-    # continue training
-    start_epoch = 0
-    if args.continue_train:
-        [optimizer_G, scheduler_G, net_G], start_epoch = load_checkpoint_by_key([optimizer_G, scheduler_G, net_G],\
-                                                            checkpoint_dir, ['optimizer_G','scheduler_G','net_G'])
-
-    # start training
-    global_iter = 0
-    monitor_loss_best = 100
-    iter_per_epoch = len(trainDataLoader)
-    start_time = time.time()
-    for epoch in range(start_epoch, args.epochs):
-        net_G.train()
-        for iter, sample in enumerate(trainDataLoader):
-            global_iter += 1
-
-            # forward G
-            # change data from NHWC to NCHW
-            real_A = sample['input'].permute(0,3,1,2).to(device)
-            real_B = sample['target'].permute(0,3,1,2).to(device)
-            fake_B = net_G(real_A)
-
-            # define loss and do backward
-            optimizer_G.zero_grad()
-            loss_L1 = criterionL1(fake_B, real_B)
-            # loss_test = criteriontest(fake_B, real_B)
-            # loss_G = loss_L1 + loss_test
-            loss_G = loss_L1
-            loss_G.backward()
-            optimizer_G.step()
-
-            # print msg
-            if global_iter % args.print_freq == 0:
-                print('Epoch: [%2d] [%4d/%4d] time: %4.4f, L1_loss: %.8f' % \
-                    (epoch, iter, iter_per_epoch, time.time()-start_time, loss_L1.item()))
-                logger.scalar_summary('train/L1_loss', loss_G.item(), global_iter)
-
-        # validation
-        monitor_loss = validate(net_G, valDataLoader, logger, epoch, global_iter, device)
-        scheduler_G.step(monitor_loss)
-
-        # save checkpoint
-        if monitor_loss_best > monitor_loss or epoch % args.save_freq == 1 or epoch == args.epochs-1:
-            is_best = (monitor_loss_best > monitor_loss)
-            state = {'epoch': epoch, 'task_label': args.task_label, 'monitor_loss': monitor_loss, \
-                    'optimizer_G': optimizer_G.state_dict(), 'scheduler_G': scheduler_G.state_dict(), \
-                    'net_G': net_G.state_dict()}
-            save_checkpoint(state, is_best, checkpoint_dir)
 # run the main function
 main()
